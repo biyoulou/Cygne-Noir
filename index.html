@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' https://grainy-gradients.vercel.app https://images.unsplash.com data:;">
+    
+    <title>Cygne Noir | Chimère v10 - Version Expérimentale</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Playfair+Display:ital,wght@0,700;1,700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --accent: #3b82f6; --bg: #030712; --err: #ef4444; }
+        body { font-family: 'Inter', sans-serif; background: var(--bg); color: #f8fafc; margin: 0; min-height: 100vh; overflow-x: hidden; }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        .serif { font-family: 'Playfair Display', serif; }
+
+        .glass { 
+            background: rgba(3, 7, 18, 0.92); 
+            backdrop-filter: blur(40px); 
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+
+        .fade-in { animation: fadeIn 0.8s cubic-bezier(0.16, 1, 0.3, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .loader { width: 32px; height: 32px; border: 2px solid #FFF; border-bottom-color: transparent; border-radius: 50%; display: inline-block; animation: rotation 1s linear infinite; }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        .gauge-container { background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; margin-top: 8px; }
+        .gauge-fill { height: 100%; transition: width 1s ease-out; }
+
+        .btn-option { transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .btn-option.selected { background: rgba(59, 130, 246, 0.2); border-color: rgba(59, 130, 246, 0.6); transform: scale(0.98); }
+        
+        .scanline::before {
+            content: " "; display: block; position: absolute; top: 0; left: 0; bottom: 0; right: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            z-index: 50; background-size: 100% 2px, 3px 100%; pointer-events: none;
+        }
+
+        .book-card { background: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%); transition: transform 0.3s ease; }
+        .book-card:hover { transform: translateY(-5px); }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-0 sm:p-4 bg-[url('https://grainy-gradients.vercel.app/noise.svg')]">
+    
+    <div class="glass w-full max-w-5xl h-screen sm:h-[94vh] rounded-none sm:rounded-2xl flex flex-col overflow-hidden relative scanline">
+        
+        <!-- Header -->
+        <div id="app-header" class="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-black/40 shrink-0 z-20 hidden">
+            <div class="flex items-center gap-3 cursor-pointer" onclick="App.renderHome()">
+                <div class="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+                <span class="mono text-[10px] tracking-[0.4em] font-bold text-white uppercase">Cygne Noir <span class="text-slate-600">v10.0</span></span>
+            </div>
+            <div class="flex items-center gap-4">
+                <button onclick="App.renderHistory()" class="mono text-[9px] text-slate-400 hover:text-white uppercase tracking-widest transition-colors flex items-center gap-2">
+                    <i class="fa-solid fa-microscope"></i> <span class="hidden sm:inline">Archives</span>
+                </button>
+                <button onclick="App.logout()" class="mono text-[9px] text-red-900/60 hover:text-red-400 uppercase tracking-widest transition-colors">
+                    <i class="fa-solid fa-power-off"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Viewport -->
+        <div id="main-content" class="flex-grow overflow-y-auto relative z-10 flex flex-col scroll-smooth">
+            <div id="loader-view" class="h-full flex flex-col justify-center items-center">
+                <span class="loader"></span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- CRYPTO & DB (Identique V9 pour stabilité) ---
+        const CryptoGuard = {
+            async deriveKey(password, salt) {
+                const enc = new TextEncoder();
+                const keyMaterial = await window.crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
+                return window.crypto.subtle.deriveKey({ name: "PBKDF2", hash: "SHA-256", iterations: 300000, salt }, keyMaterial, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+            },
+            async encrypt(data, key) {
+                const iv = window.crypto.getRandomValues(new Uint8Array(12));
+                const content = await window.crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(JSON.stringify(data)));
+                return { iv: Array.from(iv), content: Array.from(new Uint8Array(content)) };
+            },
+            async decrypt(cipher, key) {
+                const decrypted = await window.crypto.subtle.decrypt({ name: "AES-GCM", iv: new Uint8Array(cipher.iv) }, key, new Uint8Array(cipher.content));
+                return JSON.parse(new TextDecoder().decode(decrypted));
+            }
+        };
+
+        const IDB = {
+            open() { return new Promise((r, j) => { const q = indexedDB.open('CygneNoirVault', 1); q.onupgradeneeded = e => e.target.result.createObjectStore('secure_store'); q.onsuccess = e => r(e.target.result); q.onerror = j; }); },
+            async put(key, val) { const db = await this.open(); return new Promise((r, j) => { const tx = db.transaction('secure_store', 'readwrite'); tx.oncomplete = r; tx.objectStore('secure_store').put(val, key); }); },
+            async get(key) { const db = await this.open(); return new Promise((r, j) => { const tx = db.transaction('secure_store', 'readonly'); const q = tx.objectStore('secure_store').get(key); q.onsuccess = () => r(q.result); q.onerror = j; }); },
+            async clear() { const db = await this.open(); return new Promise((r, j) => { const tx = db.transaction('secure_store', 'readwrite'); tx.oncomplete = r; tx.objectStore('secure_store').clear(); }); }
+        };
+
+        const Storage = {
+            sessionKey: null,
+            async login(pass) {
+                const auth = await IDB.get('cn_auth');
+                if (!auth) return false;
+                try {
+                    const key = await CryptoGuard.deriveKey(pass, new Uint8Array(auth.salt));
+                    await CryptoGuard.decrypt(auth.test, key);
+                    this.sessionKey = key;
+                    return true;
+                } catch(e) { return false; }
+            },
+            async create(pass) {
+                const salt = window.crypto.getRandomValues(new Uint8Array(16));
+                const key = await CryptoGuard.deriveKey(pass, salt);
+                const test = await CryptoGuard.encrypt({ok:1}, key);
+                await IDB.put('cn_auth', { salt: Array.from(salt), test });
+                this.sessionKey = key;
+            },
+            async save(history) { if (!this.sessionKey) return; const cipher = await CryptoGuard.encrypt(history, this.sessionKey); await IDB.put('cn_vault', cipher); },
+            async load() { if (!this.sessionKey) return []; const raw = await IDB.get('cn_vault'); if(!raw) return []; return await CryptoGuard.decrypt(raw, this.sessionKey); },
+            async exists() { return !!(await IDB.get('cn_auth')); },
+            async wipe() { await IDB.clear(); sessionStorage.clear(); }
+        };
+
+        // --- PSYCHO ENGINE V10 ---
+        const PSYCHO_DB = {
+            archetypes: [
+                { id: "DESERT", name: "Le Désert Émotionnel", condition: (s) => s.disengagement > 60, desc: "Le calme apparent masque un vide. L'absence de conflit n'est pas la paix, c'est l'indifférence." },
+                { id: "SYMBIOSIS", name: "La Bulle Fusionnelle", condition: (s) => s.fusion > 80, desc: "Vous ne faites qu'un. C'est votre plus grande force et votre plus grand danger." },
+                { id: "WARZONE", name: "Le Duel Permanent", condition: (s) => s.friction > 65, desc: "Une passion dévorante où chaque désaccord devient un champ de bataille." },
+                { id: "PARALLEL", name: "Les Lignes Parallèles", condition: (s) => s.fusion < 35 && s.friction < 35, desc: "Une cohabitation pacifique mais distante. La flamme vacille par manque d'oxygène." },
+                { id: "ANCHOR", name: "L'Ancrage Solide", condition: (s) => s.security > 70, desc: "Une relation rare où la sécurité de l'un nourrit la liberté de l'autre." }
+            ],
+            readingList: [
+                { title: "Les 7 lois de la réussite pour vivre en couple", author: "John Gottman", desc: "La bible basée sur 40 ans de recherche scientifique.", link: "https://www.google.com/search?q=John+Gottman+7+lois+couple" },
+                { title: "L'Intelligence Émotionnelle", author: "Daniel Goleman", desc: "Comprendre ses émotions pour mieux comprendre l'autre.", link: "https://www.google.com/search?q=Daniel+Goleman+Intelligence+Emotionnelle" },
+                { title: "M'aimeras-tu encore demain ?", author: "Esther Perel", desc: "Une exploration fascinante du désir et de la fidélité.", link: "https://www.google.com/search?q=Esther+Perel+livre" },
+                { title: "Les mots sont des fenêtres", author: "Marshall Rosenberg", desc: "Le guide ultime de la Communication Non-Violente (CNV).", link: "https://www.google.com/search?q=Marshall+Rosenberg+CNV" }
+            ]
+        };
+
+        const MASTER_SCENARIOS = [
+            { id: 1, cat: "Territoire", axis: "POWER", weight: 1, scene: "Un tiers s'installe chez vous sans date de fin.", opts: ["Inacceptable (Rigidité)", "Négociable (Flexibilité)", "Acceptable (Perméabilité)"] },
+            { id: 2, cat: "Argent", axis: "POWER", weight: 2, scene: "Un achat majeur (20% budget) fait sans prévenir.", opts: ["Confrontation (Attaque)", "Discussion (Adulte)", "Indifférence (Désengagement)"] },
+            { id: 3, cat: "Stress", axis: "ATTACHMENT", weight: 1, scene: "L'autre panique totalement lors d'une crise.", opts: ["Je dirige (Parent)", "Je console (Adulte)", "Je fuis (Enfant)"] },
+            { id: 4, cat: "Intimité", axis: "ATTACHMENT", weight: 2, scene: "Désir absent depuis plusieurs semaines.", opts: ["Inquiétude (Anxieux)", "Patience (Sécure)", "Évitement (Évitant)"] },
+            { id: 5, cat: "Carrière", axis: "VALUES", weight: 3, scene: "Opportunité à 1000km, l'autre doit tout quitter.", opts: ["Moi d'abord (Ego)", "Compromis (Nous)", "Nous d'abord (Sacrifice)"] },
+            { id: 6, cat: "Social", axis: "CONFLICT", weight: 1, scene: "L'autre vous humilie (involontairement) en public.", opts: ["Réaction cash (Attaque)", "Privé (Réparation)", "Silence (Rancune)"] },
+            { id: 7, cat: "Valeurs", axis: "VALUES", weight: 3, scene: "Désaccord sur l'éducation ou la morale profonde.", opts: ["Ligne rouge (Principe)", "Évolution (Ouverture)", "Renoncement (Soumission)"] },
+            { id: 8, cat: "Enfants", axis: "VALUES", weight: 3, scene: "Désaccord majeur sur une punition jugée 'juste'.", opts: ["Autorité (Rigueur)", "Dialogue (Médiation)", "Laxisme (Paix)"] },
+            { id: 9, cat: "Ménage", axis: "POWER", weight: 1, scene: "Le chaos s'installe dans la maison depuis 1 semaine.", opts: ["Reproches (Parent)", "Action (Sauveur)", "Attente (Passif)"] },
+            { id: 10, cat: "Futur", axis: "VALUES", weight: 3, scene: "L'un veut lancer une boite risquée avec l'épargne.", opts: ["Veto (Sécurité)", "Soutien (Aventure)", "Doute (Peur)"] }
+        ];
+
+        const AnalysisInstrument = {
+            extractType(o) { return o.match(/\((.*?)\)/)?.[1].toUpperCase() || "NEUTRE"; },
+            evaluate(aAns, bAns, aName, bName) {
+                let fusion = 0, security = 0, friction = 0, disengagement = 0, totalW = 0;
+                const details = aAns.map((vA, i) => {
+                    const vB = bAns[i];
+                    const q = MASTER_SCENARIOS[i];
+                    const w = q.weight;
+                    totalW += 100 * w;
+                    
+                    const diff = Math.abs(vA - vB);
+                    fusion += (diff === 0 ? 100 : diff === 1 ? 50 : 0) * w;
+                    
+                    const tA = this.extractType(q.opts[vA]), tB = this.extractType(q.opts[vB]);
+                    const isSafe = (t) => ["SÉCURE", "ADULTE", "DIALOGUE", "MÉDIATION", "FLEXIBILITÉ"].some(k => t.includes(k));
+                    if (isSafe(tA) && isSafe(tB)) security += 100 * w;
+                    else if (isSafe(tA) || isSafe(tB)) security += 50 * w;
+                    
+                    if (diff === 2) friction += 100 * w;
+                    else if (diff === 1) friction += 50 * w;
+                    
+                    if (["PASSIF", "NEUTRE", "DÉSENGAGEMENT"].some(k => tA.includes(k) || tB.includes(k))) disengagement++;
+                    
+                    return { cat: q.cat, score: diff === 0 ? 100 : 50, weight: w, tA, tB };
+                });
+
+                const stats = { 
+                    fusion: Math.round(fusion/totalW * 100), 
+                    security: Math.round(security/totalW * 100), 
+                    friction: Math.round(friction/totalW * 100),
+                    disengagement: (disengagement / (aAns.length * 2)) * 100
+                };
+                
+                let arch = PSYCHO_DB.archetypes.find(a => a.condition(stats)) || PSYCHO_DB.archetypes[4];
+                return { ...stats, archetype: arch, details, aName, bName, timestamp: Date.now() };
+            }
+        };
+
+        const App = {
+            state: { phase: 'auth', alpha: [], beta: [], currentIdx: 0 },
+
+            async init() {
+                if (await Storage.exists()) this.renderLogin(); else this.renderRegister();
+            },
+
+            renderRegister() {
+                document.getElementById('main-content').innerHTML = `
+                    <div class="h-full flex flex-col justify-center items-center p-6 fade-in max-w-sm mx-auto">
+                        <h1 class="serif italic text-3xl mb-4">Initialisation</h1>
+                        <input id="reg-pass" type="password" placeholder="Clé Maître" class="w-full bg-white/5 border border-white/10 p-4 rounded-lg text-white mb-4 outline-none">
+                        <button onclick="App.handleCreate()" class="w-full py-4 bg-white text-black font-bold uppercase tracking-widest rounded-lg">Générer</button>
+                    </div>`;
+            },
+
+            async handleCreate() {
+                const p = document.getElementById('reg-pass').value;
+                if(p.length < 4) return;
+                await Storage.create(p);
+                this.renderHome();
+            },
+
+            renderLogin() {
+                document.getElementById('main-content').innerHTML = `
+                    <div class="h-full flex flex-col justify-center items-center p-6 fade-in max-w-sm mx-auto">
+                        <input id="log-pass" type="password" placeholder="Clé Maître" class="w-full bg-white/5 border border-white/10 p-4 rounded-lg text-white mb-4 text-center">
+                        <button onclick="App.handleLogin()" class="w-full py-4 bg-blue-600 text-white font-bold uppercase tracking-widest rounded-lg">Ouvrir</button>
+                    </div>`;
+            },
+
+            async handleLogin() {
+                if(await Storage.login(document.getElementById('log-pass').value)) this.renderHome();
+            },
+
+            renderHome() {
+                document.getElementById('app-header').classList.remove('hidden');
+                document.getElementById('main-content').innerHTML = `
+                    <div class="h-full flex flex-col justify-center items-center p-6 fade-in text-center max-w-lg mx-auto">
+                        <h1 class="serif italic text-6xl mb-4">Cygne <span class="text-blue-500">Noir</span></h1>
+                        
+                        <!-- AJOUT 1: Mention Version Expérimentale -->
+                        <p class="text-slate-500 text-[10px] uppercase tracking-widest mb-12">Version expérimentale – outil d’exploration relationnelle</p>
+
+                        <div class="grid grid-cols-2 gap-4 w-full mb-6">
+                            <input id="name-a" type="text" placeholder="PARTENAIRE A" class="bg-white/5 border border-white/10 p-4 rounded-lg text-white text-sm text-center">
+                            <input id="name-b" type="text" placeholder="PARTENAIRE B" class="bg-white/5 border border-white/10 p-4 rounded-lg text-white text-sm text-center">
+                        </div>
+                        <button onclick="App.startSession()" class="w-full py-5 bg-white text-black font-bold uppercase tracking-widest rounded-lg">Lancer l'Analyse</button>
+                    </div>`;
+            },
+
+            startSession() {
+                this.state.nameA = document.getElementById('name-a').value || "Alpha";
+                this.state.nameB = document.getElementById('name-b').value || "Bêta";
+                this.state.phase = 'alpha';
+                this.renderQuestion();
+            },
+
+            renderQuestion() {
+                const user = this.state.phase === 'alpha' ? this.state.nameA : this.state.nameB;
+                const q = MASTER_SCENARIOS[this.state.currentIdx];
+                document.getElementById('main-content').innerHTML = `
+                    <div class="max-w-xl mx-auto p-6 pt-20 fade-in w-full">
+                        <span class="mono text-[10px] text-blue-500 uppercase tracking-widest">${user} // ${this.state.currentIdx + 1}/${MASTER_SCENARIOS.length}</span>
+                        <h2 class="serif italic text-3xl mb-4">${q.cat}</h2>
+                        <p class="text-xl text-slate-300 mb-12">"${q.scene}"</p>
+                        <div class="space-y-3">
+                            ${q.opts.map((o,i) => `
+                                <button onclick="App.handleAnswer(${i})" class="btn-option w-full text-left p-5 bg-white/5 border border-white/5 rounded-xl hover:border-blue-500/50">${o}</button>
+                            `).join('')}
+                        </div>
+                    </div>`;
+            },
+
+            handleAnswer(val) {
+                if(this.state.phase === 'alpha') this.state.alpha.push(val); else this.state.beta.push(val);
+                this.state.currentIdx++;
+                if(this.state.currentIdx >= MASTER_SCENARIOS.length) {
+                    if(this.state.phase === 'alpha') { this.state.phase = 'beta'; this.state.currentIdx = 0; this.renderTransition(); }
+                    else this.finalize();
+                } else this.renderQuestion();
+            },
+
+            renderTransition() {
+                document.getElementById('main-content').innerHTML = `
+                    <div class="h-full flex flex-col justify-center items-center p-6 text-center">
+                        <h2 class="serif italic text-3xl mb-12">C'est au tour de ${this.state.nameB}</h2>
+                        <button onclick="App.renderQuestion()" class="px-12 py-5 bg-white text-black font-bold rounded-lg">Démarrer</button>
+                    </div>`;
+            },
+
+            async finalize() {
+                const res = AnalysisInstrument.evaluate(this.state.alpha, this.state.beta, this.state.nameA, this.state.nameB);
+                const history = await Storage.load();
+                history.unshift(res);
+                await Storage.save(history);
+                this.renderResults(res);
+            },
+
+            renderResults(res) {
+                const mc = document.getElementById('main-content');
+                mc.innerHTML = `
+                    <div class="max-w-4xl mx-auto p-6 py-12 fade-in">
+                        <div class="text-center mb-16">
+                            <h1 class="serif italic text-6xl mb-6 text-white">${res.archetype.name}</h1>
+                            <p class="text-slate-400 italic max-w-xl mx-auto border-l-2 border-blue-500 pl-4">"${res.archetype.desc}"</p>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 mb-16 p-8 bg-white/5 rounded-2xl">
+                            <div><div class="text-[9px] uppercase tracking-widest text-slate-500 mb-2">Harmonie</div><div class="gauge-container"><div class="gauge-fill bg-blue-500" style="width:${res.fusion}%"></div></div></div>
+                            <div><div class="text-[9px] uppercase tracking-widest text-slate-500 mb-2">Sécurité</div><div class="gauge-container"><div class="gauge-fill bg-green-500" style="width:${res.security}%"></div></div></div>
+                            <div><div class="text-[9px] uppercase tracking-widest text-slate-500 mb-2">Tensions</div><div class="gauge-container"><div class="gauge-fill bg-red-500" style="width:${res.friction}%"></div></div></div>
+                        </div>
+
+                        <!-- RAPPORT CONSTRUCTIF DÉTAILLÉ -->
+                        <section class="mb-20">
+                            <h2 class="serif italic text-4xl mb-8 text-white">Rapport d'Analyse Constructif</h2>
+                            <div class="space-y-8">
+                                <div class="bg-white/5 p-8 rounded-2xl border border-white/5">
+                                    <h3 class="text-blue-400 font-bold uppercase tracking-widest text-xs mb-4">1. Ce qui vous unit (Vos Forces)</h3>
+                                    <p class="text-slate-300 leading-relaxed text-sm">
+                                        D'après vos réponses, votre couple possède un socle de <strong>${res.fusion}% d'harmonie naturelle</strong>. 
+                                        Cela signifie que sur les enjeux fondamentaux (comme ${res.details.find(d => d.score === 100)?.cat || "vos valeurs"}), vous parlez la même langue. 
+                                        Vous n'avez pas besoin de longues explications pour vous comprendre sur ces points, ce qui est une économie d'énergie précieuse pour le quotidien.
+                                    </p>
+                                </div>
+
+                                <div class="bg-white/5 p-8 rounded-2xl border border-white/5">
+                                    <h3 class="text-orange-400 font-bold uppercase tracking-widest text-xs mb-4">2. Les zones de friction (À surveiller)</h3>
+                                    <p class="text-slate-300 leading-relaxed text-sm">
+                                        Le score de tension (${res.friction}%) indique que vos modes de réaction diffèrent face au stress. 
+                                        Lorsqu'une crise survient, l'un de vous a tendance à vouloir <em>résoudre</em> immédiatement (posture parentale/active) tandis que l'autre peut avoir besoin de <em>retrait</em> (posture d'évitement). 
+                                        Ce n'est pas un manque d'amour, mais une différence de "système d'exploitation" émotionnel.
+                                    </p>
+                                </div>
+
+                                <div class="bg-blue-900/10 p-8 rounded-2xl border border-blue-500/20">
+                                    <h3 class="text-white font-bold uppercase tracking-widest text-xs mb-4">3. Suggestions Constructives</h3>
+                                    <ul class="space-y-4 text-sm text-slate-300">
+                                        <li class="flex items-start gap-3">
+                                            <i class="fa-solid fa-circle-check text-blue-500 mt-1"></i>
+                                            <span><strong>La Minute de Gratitude :</strong> Chaque soir, nommez une chose spécifique que l'autre a faite et que vous avez appréciée. Cela reconstruit la "banque de sécurité" émotionnelle.</span>
+                                        </li>
+                                        <li class="flex items-start gap-3">
+                                            <i class="fa-solid fa-circle-check text-blue-500 mt-1"></i>
+                                            <span><strong>Le Time-Out :</strong> Si une dispute monte à plus de 6/10 en intensité, l'un de vous peut dire "Time-out". On s'éloigne 20 minutes (pour calmer le cerveau archaïque) avant de reprendre calmement.</span>
+                                        </li>
+                                        <li class="flex items-start gap-3">
+                                            <i class="fa-solid fa-circle-check text-blue-500 mt-1"></i>
+                                            <span><strong>L'écoute active :</strong> Une fois par semaine, passez 10 minutes où l'un parle sans être interrompu, puis l'autre reformule ce qu'il a entendu avant de répondre.</span>
+                                        </li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </section>
+
+                        <!-- BIBLIOTHÈQUE / REDIRECTIONS -->
+                        <section class="mb-20">
+                            <h2 class="serif italic text-4xl mb-8 text-white">Aller plus loin (Bibliothèque)</h2>
+                            <p class="text-slate-500 text-sm mb-8">Ces lectures sont des références mondiales pour transformer votre dynamique de couple :</p>
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                ${PSYCHO_DB.readingList.map(book => `
+                                    <a href="${book.link}" target="_blank" class="book-card p-6 rounded-2xl border border-white/10 hover:border-blue-500/50 block">
+                                        <h4 class="text-white font-bold mb-1">${book.title}</h4>
+                                        <div class="text-blue-400 text-[10px] uppercase tracking-widest mb-3">${book.author}</div>
+                                        <p class="text-slate-400 text-xs leading-relaxed">${book.desc}</p>
+                                        <div class="mt-4 text-blue-500 text-[10px] font-bold uppercase tracking-widest flex items-center gap-2">
+                                            En savoir plus <i class="fa-solid fa-arrow-right text-[8px]"></i>
+                                        </div>
+                                    </a>
+                                `).join('')}
+                            </div>
+                        </section>
+
+                        <!-- AJOUT 3: La Question Finale (Clé) -->
+                        <section class="mb-16 text-center border-t border-white/5 pt-12">
+                            <p class="serif italic text-2xl text-white mb-6">"Qu’est-ce qui, dans ce rapport, vous a le plus interpellé ?"</p>
+                        </section>
+
+                        <!-- AJOUT 2: Disclaimer légal et éthique -->
+                        <div class="mb-8 text-center px-6">
+                            <p class="text-slate-600 text-[10px] italic">
+                                Ce rapport propose une lecture structurée de dynamiques relationnelles.<br>
+                                Il ne constitue ni un diagnostic, ni une prédiction.
+                            </p>
+                        </div>
+
+                        <div class="text-center">
+                            <button onclick="App.renderHome()" class="px-8 py-4 border border-white/20 rounded-full text-[10px] uppercase tracking-widest hover:bg-white hover:text-black transition-all">Nouvelle Analyse</button>
+                        </div>
+                    </div>`;
+            },
+
+            async renderHistory() {
+                const hist = await Storage.load();
+                document.getElementById('main-content').innerHTML = `
+                    <div class="max-w-3xl mx-auto p-6 pt-20 fade-in">
+                        <h2 class="serif italic text-3xl mb-12">Archives</h2>
+                        <div class="space-y-4">
+                            ${hist.map((h, i) => `
+                                <div onclick="App.viewCached(${i})" class="bg-white/5 border border-white/10 p-6 rounded-xl flex justify-between items-center cursor-pointer">
+                                    <div class="text-white font-serif italic">${h.aName} & ${h.bName}</div>
+                                    <div class="text-blue-400 font-bold">${h.security}%</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>`;
+                this.state.histCache = hist;
+            },
+            viewCached(i) { this.renderResults(this.state.histCache[i]); },
+            logout() { location.reload(); }
+        };
+
+        window.onload = () => App.init();
+    </script>
+</body>
+</html>

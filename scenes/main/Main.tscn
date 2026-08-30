@@ -1,0 +1,18 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/world/MondholmWorld.gd" id="1_world"]
+[ext_resource type="Script" path="res://scripts/ui/HUD.gd" id="2_hud"]
+[ext_resource type="Script" path="res://scripts/core/InteractSystem.gd" id="3_interact"]
+[ext_resource type="PackedScene" path="res://scenes/ui/MainMenu.tscn" id="4_menu"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1_world")
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 10
+script = ExtResource("2_hud")
+
+[node name="InteractSystem" type="Node" parent="."]
+script = ExtResource("3_interact")
+
+[node name="MainMenu" parent="HUD" instance=ExtResource("4_menu")]

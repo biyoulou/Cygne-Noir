@@ -1,0 +1,7 @@
+disable:
+  - class-definitions-order
+  - max-line-length
+  - unused-argument
+max_line_length: 120
+max_public_methods: 40
+function_arguments_number: 12

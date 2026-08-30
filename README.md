@@ -5,9 +5,10 @@ Naruto Storm / Dragon Ball Z / Genshin Impact, sans reprendre aucun asset ni
 personnage sous licence. Cette version 0.6 est un prototype réellement lançable :
 le joueur apparaît dans **MONDHOLM — Vallée de la Résonance**.
 
-Le projet est construit pour **Godot 4.4+** et utilise uniquement des assets
-procéduraux (meshes, matériaux, particules, audio) donc il se lance directement
-depuis le projet sans import de fichiers externes.
+Le projet est construit pour **Godot 4.7+** (testé/validé statiquement sur la
+structure 4.4, ouvert sur 4.7.2) et utilise uniquement des assets procéduraux
+(meshes, matériaux, particules, audio) donc il se lance directement depuis le
+projet sans import de fichiers externes.
 
 ## Démarrage rapide
 

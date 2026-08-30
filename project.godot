@@ -10,7 +10,7 @@ config/name="TENKAI"
 config/description="TENKAI - Prototype pre-alpha : vertical slice action RPG 3D (Mondholm)."
 config/version="0.6.0-playable"
 run/main_scene="res://scenes/main/Main.tscn"
-config/features=PackedStringArray("4.4")
+config/features=PackedStringArray("4.7")
 config/icon="res://icon.svg"
 
 [autoload]
